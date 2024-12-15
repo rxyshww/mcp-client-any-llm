@@ -3,137 +3,69 @@
 import { ChatHistory } from "@/components/chat-history"
 import { ChatInput } from "@/components/chat-input"
 import { ChatLayout } from "@/components/chat-layout"
-import { ChatMessage } from "@/components/chat-message"
-import { useState } from "react"
-
-const initialMessages = [
-  {
-    role: "assistant" as const,
-    content:
-      "Hello! I'm your AI coding assistant. I can help you with programming questions, code reviews, and explanations. How can I help you today?",
-  },
-  {
-    role: "user" as const,
-    content: "Can you show me an example of a binary search tree implementation in TypeScript?",
-  },
-  {
-    role: "assistant" as const,
-    content: `I'll show you a basic implementation of a Binary Search Tree in TypeScript. Here's an example:
-
-\`\`\`typescript
-class TreeNode {
-  value: number;
-  left: TreeNode | null;
-  right: TreeNode | null;
-
-  constructor(value: number) {
-    this.value = value;
-    this.left = null;
-    this.right = null;
-  }
-}
-
-class BinarySearchTree {
-  root: TreeNode | null;
-
-  constructor() {
-    this.root = null;
-  }
-
-  insert(value: number): void {
-    const newNode = new TreeNode(value);
-
-    if (!this.root) {
-      this.root = newNode;
-      return;
-    }
-
-    let current = this.root;
-    while (true) {
-      if (value < current.value) {
-        if (current.left === null) {
-          current.left = newNode;
-          break;
-        }
-        current = current.left;
-      } else {
-        if (current.right === null) {
-          current.right = newNode;
-          break;
-        }
-        current = current.right;
-      }
-    }
-  }
-
-  search(value: number): boolean {
-    let current = this.root;
-    
-    while (current !== null) {
-      if (value === current.value) {
-        return true;
-      }
-      if (value < current.value) {
-        current = current.left;
-      } else {
-        current = current.right;
-      }
-    }
-    
-    return false;
-  }
-}
-
-// Example usage:
-const bst = new BinarySearchTree();
-bst.insert(10);
-bst.insert(5);
-bst.insert(15);
-bst.insert(2);
-bst.insert(7);
-
-console.log(bst.search(7));  // true
-console.log(bst.search(9));  // false
-\`\`\`
-
-This implementation includes:
-
-1. A \`TreeNode\` class that represents each node in the tree
-2. A \`BinarySearchTree\` class with basic \`insert\` and \`search\` methods
-3. The \`insert\` method maintains the BST property where left child is smaller and right child is larger
-4. The \`search\` method efficiently finds values by traversing left or right based on the value
-
-Would you like me to explain any part of this implementation in more detail?`,
-  },
-]
+import { ChatMessages } from "@/components/chat-messages"
+import { useChat } from 'ai/react'
+import { useParams } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Loader2 } from "lucide-react"
+import { useEffect } from "react"
 
 export default function ChatPage() {
-  const [messages, setMessages] = useState(initialMessages)
+  const { id } = useParams()
+  const { messages, input, handleInputChange, handleSubmit, isLoading, stop } = useChat({
+    api: '/api/chat',
+    id: id as string,
+    onFinish: (message) => {
+      // Update chat in localStorage with new messages
+      const chats = JSON.parse(localStorage.getItem('chats') || '[]')
+      const chatIndex = chats.findIndex((c: any) => c.id === id)
+      if (chatIndex !== -1) {
+        chats[chatIndex].messages = messages
+        localStorage.setItem('chats', JSON.stringify(chats))
+      }
+    }
+  })
 
-  const handleSendMessage = (content: string) => {
-    // Add user message
-    setMessages((prev) => [...prev, { role: "user" as const, content }])
-
-    // Simulate AI response
-    setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant" as const,
-          content: "This is a simulated response. In a real implementation, this would come from your AI backend.",
-        },
-      ])
-    }, 1000)
-  }
+  // Initialize chat in localStorage if it doesn't exist
+  useEffect(() => {
+    const chats = JSON.parse(localStorage.getItem('chats') || '[]')
+    if (!chats.find((c: any) => c.id === id)) {
+      chats.unshift({ id, messages: [] })
+      localStorage.setItem('chats', JSON.stringify(chats))
+    }
+  }, [id])
 
   return (
-    <ChatLayout sidebar={<ChatHistory />}>
-      <div className="flex-1 overflow-y-auto">
-        {messages.map((message, i) => (
-          <ChatMessage key={i} message={message} />
-        ))}
+    <ChatLayout sidebar={<ChatHistory currentChatId={id as string} />}>
+      <div className="flex flex-col h-full">
+        <div className="flex-1 overflow-y-auto">
+          <ChatMessages messages={messages} />
+          
+          {isLoading && (
+            <div className="flex items-center justify-center gap-2 p-4">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => stop()}
+              >
+                Stop generating
+              </Button>
+            </div>
+          )}
+        </div>
+
+        <div className="border-t p-4">
+          <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
+            <ChatInput 
+              value={input}
+              onChange={handleInputChange}
+              placeholder="Type a message..."
+              disabled={isLoading}
+            />
+          </form>
+        </div>
       </div>
-      <ChatInput onSend={handleSendMessage} />
     </ChatLayout>
   )
 }
