@@ -12,19 +12,39 @@ const openai = createOpenAI({
 
 // Define weather tool
 const weatherTool = tool({
-  description: "Get the weather in a location",
+  name: "weather",
+  description: "获取指定位置的天气信息",
   parameters: z.object({
-    location: z.string().describe("The location to get the weather for"),
+    location: z.string().describe("要查询天气的位置"),
   }),
   execute: async ({ location }) => {
     // Mock weather data for demonstration
     const temperature = 72 + Math.floor(Math.random() * 21) - 10;
-    return {
+    const result = {
       location,
       temperature,
       unit: "Fahrenheit",
-      conditions: "Partly cloudy",
+      conditions: "晴朗",
     };
+    console.log("Weather tool result:", result);
+    return result;
+  },
+});
+
+// Define time tool
+const timeTool = tool({
+  name: "time",
+  description: "获取指定时区的当前时间",
+  parameters: z.object({
+    timezone: z.string().optional().describe("时区，默认为 UTC+8"),
+  }),
+  execute: async ({ timezone = "Asia/Shanghai" }) => {
+    const result = {
+      timezone,
+      time: new Date().toLocaleString("zh-CN", { timeZone: timezone }),
+    };
+    console.log("Time tool result:", result);
+    return result;
   },
 });
 
@@ -33,25 +53,53 @@ export async function POST(req: Request) {
     const { messages } = await req.json();
     console.log("Chat API Request:", messages);
 
+    let currentToolCalls: any[] = [];
+
     const result = streamText({
-      model: openai("gpt-4o-mini"),
+      model: openai("gpt-4"),
       messages,
       tools: {
         weather: weatherTool,
+        time: timeTool,
       },
-      maxSteps: 5, // Allow multiple steps for tool interaction
+      maxSteps: 3,
+      experimental_onToolCall: async (toolCall) => {
+        console.log("Tool called:", toolCall);
+
+        // 将工具调用添加到当前消息的工具调用列表中
+        currentToolCalls.push({
+          tool: toolCall.tool,
+          args: toolCall.args,
+          id: toolCall.id,
+        });
+
+        // 返回包含所有工具调用的消息
+        const message = {
+          toolCalls: currentToolCalls,
+        };
+
+        console.log("Adding tool calls to message:", message);
+        return message;
+      },
+      onError: (error) => {
+        console.error("Stream error:", error);
+        currentToolCalls = []; // 重置工具调用列表
+      },
+      onComplete: () => {
+        currentToolCalls = []; // 重置工具���用列表
+      },
     });
 
     return result.toDataStreamResponse({
       getErrorMessage: (error) => {
-        console.error("Tool execution error:", error);
-        return "An error occurred while processing your request.";
+        console.error("工具执行错误:", error);
+        return "处理请求时发生错误。";
       },
     });
   } catch (error) {
-    console.error("Chat API Error:", error);
+    console.error("Chat API 错误:", error);
     return new Response(
-      JSON.stringify({ error: "Failed to process chat request" }),
+      JSON.stringify({ error: "处理聊天请求失败" }),
       {
         status: 500,
         headers: { "Content-Type": "application/json" },
