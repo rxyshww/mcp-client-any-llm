@@ -2,10 +2,21 @@ import { useEffect, useState } from 'react'
 import { type Message } from 'ai'
 import { nanoid } from 'nanoid'
 
+interface ToolCall {
+  id: string
+  name: string
+  args: any
+}
+
+interface ExtendedMessage extends Message {
+  toolCalls?: ToolCall[]
+  toolResults?: any[]
+}
+
 export interface Chat {
   id: string
   title: string
-  messages: Message[]
+  messages: ExtendedMessage[]
   lastMessage?: string
   createdAt: number
 }
@@ -54,6 +65,37 @@ export function useChatList() {
     )
   }
 
+  const appendMessageToChat = (chatId: string, message: ExtendedMessage) => {
+    setChats(prev =>
+      prev.map(chat =>
+        chat.id === chatId
+          ? {
+              ...chat,
+              messages: [...chat.messages, message],
+              lastMessage: message.content
+            }
+          : chat
+      )
+    )
+  }
+
+  const updateLastMessage = (chatId: string, message: ExtendedMessage) => {
+    setChats(prev =>
+      prev.map(chat =>
+        chat.id === chatId
+          ? {
+              ...chat,
+              messages: [
+                ...chat.messages.slice(0, -1),
+                message
+              ],
+              lastMessage: message.content
+            }
+          : chat
+      )
+    )
+  }
+
   const deleteChat = (id: string) => {
     setChats(prev => prev.filter(chat => chat.id !== id))
     // Also remove chat messages from storage
@@ -74,6 +116,8 @@ export function useChatList() {
     isLoaded,
     addChat,
     updateChat,
+    appendMessageToChat,
+    updateLastMessage,
     deleteChat,
     clearChats
   }
