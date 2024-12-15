@@ -4,7 +4,6 @@ import { z } from "zod";
 import fs from "fs";
 import path from "path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { generateSystemPrompt } from "../../../lib/prompt";
 
 // Allow streaming responses up to 30 seconds
@@ -81,59 +80,6 @@ const postgresqlClient = new Client(
   }
 );
 
-// 连接MCP服务器
-await filesystemClient.connect(filesystemTransport);
-await postgresqlClient.connect(postgresqlTransport);
-
-// 定义文件系统工具
-const filesystemTool = tool({
-  name: "filesystem",
-  description: "访问本地文件系统",
-  parameters: z.object({
-    path: z.string().describe("文件或目录路径"),
-    operation: z.enum(["read", "write", "list"]).describe("操作类型"),
-  }),
-  execute: async ({ path: filePath, operation }) => {
-    try {
-      const result = await filesystemClient.request({
-        method: "tools/call",
-        params: {
-          name: operation,
-          arguments: { path: filePath },
-        },
-      });
-      return result;
-    } catch (error) {
-      console.error("文件系统操作错误:", error);
-      throw error;
-    }
-  },
-});
-
-// 定义数据库工具
-const postgresqlTool = tool({
-  name: "postgresql",
-  description: "访问PostgreSQL数据库",
-  parameters: z.object({
-    query: z.string().describe("SQL查询语句"),
-  }),
-  execute: async ({ query }) => {
-    try {
-      const result = await postgresqlClient.request({
-        method: "tools/call",
-        params: {
-          name: "query",
-          arguments: { sql: query },
-        },
-      });
-      return result;
-    } catch (error) {
-      console.error("数据库查询错误:", error);
-      throw error;
-    }
-  },
-});
-
 // 在创建MCP客户端之后，添加以下代码
 const allTools = {
   weather: {
@@ -203,8 +149,6 @@ export async function POST(req: Request) {
     const { messages } = await req.json();
     console.log("Chat API Request:", messages);
 
-    let currentToolCalls: any[] = [];
-
     // 在消息数组开头添加系统提示
     const messagesWithSystem = [
       { role: "system", content: systemPrompt },
@@ -217,17 +161,10 @@ export async function POST(req: Request) {
       tools: {
         weather: weatherTool,
         time: timeTool,
-        filesystem: filesystemTool,
-        postgresql: postgresqlTool,
+        // filesystem: filesystemTool,
+        // postgresql: postgresqlTool,
       },
       maxSteps: 3,
-      onError: (error) => {
-        console.error("Stream error:", error);
-        currentToolCalls = [];
-      },
-      onComplete: () => {
-        currentToolCalls = [];
-      },
     });
 
     return result.toDataStreamResponse({
