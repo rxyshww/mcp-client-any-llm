@@ -86,6 +86,9 @@ importers:
       tailwind-merge:
         specifier: ^2.5.5
         version: 2.5.5
+      zod:
+        specifier: ^3.24.1
+        version: 3.24.1
     devDependencies:
       '@eslint/eslintrc':
         specifier: ^3
