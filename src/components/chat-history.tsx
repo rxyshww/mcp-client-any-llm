@@ -41,11 +41,13 @@ export function ChatHistory({ currentChatId }: ChatHistoryProps) {
     const firstUserMessage = currentChat.messages.find(m => m.role === 'user')?.content
     if (!firstUserMessage) return
 
-    const newTitle = firstUserMessage.split('\n')[0]
-    const truncatedTitle = newTitle.length > 30 ? newTitle.substring(0, 30) + '...' : newTitle
-
-    updateChat(currentChatId, { title: truncatedTitle })
-  }, [currentChatId, chats, updateChat, isLoaded])
+    // Only update if the title is different
+    if (currentChat.title === undefined || currentChat.title === '') {
+      const newTitle = firstUserMessage.split('\n')[0]
+      const truncatedTitle = newTitle.length > 30 ? newTitle.substring(0, 30) + '...' : newTitle
+      updateChat(currentChatId, { title: truncatedTitle })
+    }
+  }, [currentChatId, isLoaded, chats])
 
   if (!isLoaded) {
     return (
