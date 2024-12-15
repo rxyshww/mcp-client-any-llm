@@ -21,17 +21,8 @@ export default function ChatPage({ params }: { params: { id: string } }) {
       id: unwrappedParams.id,
       initialMessages: chatStorage.messages,
       onFinish: (message) => {
+        console.log("Message finished:", message);
         chatStorage.updateMessage(message.id, message);
-      },
-      onToolCall: () => {
-        setIsToolRunning(true);
-      },
-      onToolEnd: () => {
-        setIsToolRunning(false);
-      },
-      experimental_onFunctionCall: () => {
-        setIsToolRunning(true);
-        return undefined;
       },
     });
 

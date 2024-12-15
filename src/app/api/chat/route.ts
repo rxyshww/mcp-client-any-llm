@@ -63,24 +63,6 @@ export async function POST(req: Request) {
         time: timeTool,
       },
       maxSteps: 3,
-      experimental_onToolCall: async (toolCall) => {
-        console.log("Tool called:", toolCall);
-
-        // 将工具调用添加到当前消息的工具调用列表中
-        currentToolCalls.push({
-          tool: toolCall.tool,
-          args: toolCall.args,
-          id: toolCall.id,
-        });
-
-        // 返回包含所有工具调用的消息
-        const message = {
-          toolCalls: currentToolCalls,
-        };
-
-        console.log("Adding tool calls to message:", message);
-        return message;
-      },
       onError: (error) => {
         console.error("Stream error:", error);
         currentToolCalls = []; // 重置工具调用列表
@@ -98,12 +80,9 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("Chat API 错误:", error);
-    return new Response(
-      JSON.stringify({ error: "处理聊天请求失败" }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+    return new Response(JSON.stringify({ error: "处理聊天请求失败" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 }
