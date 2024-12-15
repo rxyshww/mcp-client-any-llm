@@ -12,7 +12,7 @@ import remarkBreaks from "remark-breaks";
 
 interface ChatMessagesProps {
   messages: (Message & {
-    toolCalls?: Array<{
+    toolInvocations?: Array<{
       tool: string;
       args: any;
     }>;
@@ -41,17 +41,18 @@ function ToolCallMessage({ tool, args }: { tool: string; args: any }) {
 
 function MessageContent({
   content,
-  toolCalls,
+  toolInvocations,
 }: {
   content: string;
-  toolCalls?: any[];
+  toolInvocations?: Array<{
+    toolName: string;
+    args: any;
+  }>;
 }) {
-  console.log("Tool calls:", toolCalls);
-  console.log("Content:", content);
   return (
     <div className="space-y-4">
-      {toolCalls?.map((call, index) => (
-        <ToolCallMessage key={index} tool={call.tool} args={call.args} />
+      {toolInvocations?.map((call, index) => (
+        <ToolCallMessage key={index} tool={call.toolName} args={call.args} />
       ))}
       <article className="prose prose-sm dark:prose-invert max-w-none">
         <ReactMarkdown
@@ -260,7 +261,7 @@ export function ChatMessages({ messages }: ChatMessagesProps) {
           <div className="flex-1 overflow-hidden">
             <MessageContent
               content={message.content}
-              toolCalls={message.toolInvocations}
+              toolInvocations={message.toolInvocations}
             />
           </div>
         </div>
