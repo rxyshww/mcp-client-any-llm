@@ -1,17 +1,13 @@
 "use client"
 
-import { Button } from "./ui/button"
-import { PlusCircle } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { cn } from "@/lib/utils"
+import { MessageSquare, Plus, Trash } from "lucide-react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useEffect, useState, useCallback } from "react"
-import { Message } from 'ai'
-import { ChatList } from './chat-list'
-
-interface Chat {
-  id: string
-  messages?: Message[]
-  title?: string
-}
+import { useChatList } from "@/hooks/use-chat-list"
+import { useEffect } from "react"
 
 interface ChatHistoryProps {
   currentChatId?: string
@@ -19,83 +15,93 @@ interface ChatHistoryProps {
 
 export function ChatHistory({ currentChatId }: ChatHistoryProps) {
   const router = useRouter()
-  const [chats, setChats] = useState<Chat[]>([])
+  const { chats, isLoaded, addChat, updateChat, deleteChat } = useChatList()
 
-  // 加载聊天列表
-  const loadChats = useCallback(() => {
-    const savedChats = localStorage.getItem('chats')
-    if (savedChats) {
-      try {
-        const parsedChats = JSON.parse(savedChats)
-        setChats(parsedChats)
-      } catch (error) {
-        console.error('Failed to parse chats:', error)
-        setChats([])
-      }
-    } else {
-      setChats([])
-    }
-  }, [])
-
-  // 初始加载
-  useEffect(() => {
-    loadChats()
-  }, [loadChats])
-
-  // 监听更新事件
-  useEffect(() => {
-    const handleChatsUpdated = () => {
-      loadChats()
-    }
-
-    window.addEventListener('chatsUpdated', handleChatsUpdated)
-    return () => window.removeEventListener('chatsUpdated', handleChatsUpdated)
-  }, [loadChats])
-
-  const handleNewChat = () => {
-    const newId = Date.now().toString()
-    const newChat: Chat = {
-      id: newId,
-      messages: [],
-      title: 'New Chat'
-    }
-
-    const updatedChats = [newChat, ...chats]
-    setChats(updatedChats)
-    localStorage.setItem('chats', JSON.stringify(updatedChats))
-    router.push(`/chat/${newId}`)
+  const createNewChat = () => {
+    const newChat = addChat()
+    router.push(`/chat/${newChat.id}`)
   }
 
-  const handleDeleteChat = useCallback((chatId: string) => {
-    const updatedChats = chats.filter(chat => chat.id !== chatId)
-    setChats(updatedChats)
-    localStorage.setItem('chats', JSON.stringify(updatedChats))
-    
-    if (chatId === currentChatId) {
-      // 如果还有其他聊天，导航到第一个聊天
-      if (updatedChats.length > 0) {
-        router.push(`/chat/${updatedChats[0].id}`)
-      } else {
-        // 如果没有聊天了，回到首页
-        router.push('/')
-      }
+  const handleDeleteChat = (id: string, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    deleteChat(id)
+    if (id === currentChatId) {
+      router.push('/')
     }
-  }, [chats, currentChatId, router])
+  }
+
+  // Update chat title when messages change
+  useEffect(() => {
+    if (!currentChatId || !isLoaded) return
+
+    const currentChat = chats.find(chat => chat.id === currentChatId)
+    if (!currentChat?.messages.length) return
+
+    const firstUserMessage = currentChat.messages.find(m => m.role === 'user')?.content
+    if (!firstUserMessage) return
+
+    const newTitle = firstUserMessage.split('\n')[0]
+    const truncatedTitle = newTitle.length > 30 ? newTitle.substring(0, 30) + '...' : newTitle
+
+    updateChat(currentChatId, { title: truncatedTitle })
+  }, [currentChatId, chats, updateChat, isLoaded])
+
+  if (!isLoaded) {
+    return (
+      <div className="flex h-full flex-col gap-2 p-4">
+        <div className="animate-pulse space-y-4">
+          <div className="h-10 rounded-lg bg-accent/50" />
+          <div className="space-y-2">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-12 rounded-lg bg-accent/20" />
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-4">
-        <Button 
-          className="w-full" 
-          size="sm"
-          onClick={handleNewChat}
+    <div className="flex h-full flex-col gap-2">
+      <div className="px-4 py-2">
+        <Button
+          onClick={createNewChat}
+          variant="outline"
+          className="w-full justify-start gap-2"
         >
-          <PlusCircle className="mr-2 h-4 w-4" />
+          <Plus className="h-4 w-4" />
           New Chat
         </Button>
       </div>
       
-      <ChatList chats={chats} onDeleteChat={handleDeleteChat} />
+      <ScrollArea className="flex-1 px-2">
+        <div className="space-y-1 p-2">
+          {chats.map((chat) => (
+            <Link
+              key={chat.id}
+              href={`/chat/${chat.id}`}
+              className={cn(
+                "group flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent",
+                chat.id === currentChatId ? "bg-accent" : "transparent"
+              )}
+            >
+              <div className="flex items-center gap-2 overflow-hidden">
+                <MessageSquare className="h-4 w-4 shrink-0" />
+                <span className="truncate">{chat.title}</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 opacity-0 group-hover:opacity-100"
+                onClick={(e) => handleDeleteChat(chat.id, e)}
+              >
+                <Trash className="h-4 w-4" />
+              </Button>
+            </Link>
+          ))}
+        </div>
+      </ScrollArea>
     </div>
   )
 }
