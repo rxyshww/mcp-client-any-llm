@@ -3,13 +3,14 @@
 import { Button } from "./ui/button"
 import { PlusCircle } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { Message } from 'ai'
 import { ChatList } from './chat-list'
 
 interface Chat {
   id: string
   messages?: Message[]
+  title?: string
 }
 
 interface ChatHistoryProps {
@@ -20,8 +21,8 @@ export function ChatHistory({ currentChatId }: ChatHistoryProps) {
   const router = useRouter()
   const [chats, setChats] = useState<Chat[]>([])
 
-  useEffect(() => {
-    // Load chats from localStorage
+  // 加载聊天列表
+  const loadChats = useCallback(() => {
     const savedChats = localStorage.getItem('chats')
     if (savedChats) {
       try {
@@ -31,14 +32,32 @@ export function ChatHistory({ currentChatId }: ChatHistoryProps) {
         console.error('Failed to parse chats:', error)
         setChats([])
       }
+    } else {
+      setChats([])
     }
   }, [])
+
+  // 初始加载
+  useEffect(() => {
+    loadChats()
+  }, [loadChats])
+
+  // 监听更新事件
+  useEffect(() => {
+    const handleChatsUpdated = () => {
+      loadChats()
+    }
+
+    window.addEventListener('chatsUpdated', handleChatsUpdated)
+    return () => window.removeEventListener('chatsUpdated', handleChatsUpdated)
+  }, [loadChats])
 
   const handleNewChat = () => {
     const newId = Date.now().toString()
     const newChat: Chat = {
       id: newId,
       messages: [],
+      title: 'New Chat'
     }
 
     const updatedChats = [newChat, ...chats]
@@ -46,6 +65,22 @@ export function ChatHistory({ currentChatId }: ChatHistoryProps) {
     localStorage.setItem('chats', JSON.stringify(updatedChats))
     router.push(`/chat/${newId}`)
   }
+
+  const handleDeleteChat = useCallback((chatId: string) => {
+    const updatedChats = chats.filter(chat => chat.id !== chatId)
+    setChats(updatedChats)
+    localStorage.setItem('chats', JSON.stringify(updatedChats))
+    
+    if (chatId === currentChatId) {
+      // 如果还有其他聊天，导航到第一个聊天
+      if (updatedChats.length > 0) {
+        router.push(`/chat/${updatedChats[0].id}`)
+      } else {
+        // 如果没有聊天了，回到首页
+        router.push('/')
+      }
+    }
+  }, [chats, currentChatId, router])
 
   return (
     <div className="flex flex-col h-full">
@@ -60,7 +95,7 @@ export function ChatHistory({ currentChatId }: ChatHistoryProps) {
         </Button>
       </div>
       
-      <ChatList chats={chats} />
+      <ChatList chats={chats} onDeleteChat={handleDeleteChat} />
     </div>
   )
 }
