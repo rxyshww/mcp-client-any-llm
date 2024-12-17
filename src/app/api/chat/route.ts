@@ -1,10 +1,16 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import { streamText, tool } from "ai";
+import { ChatOpenAI } from "@langchain/openai";
+import { streamText, tool, createDataStreamResponse, jsonSchema } from "ai";
 import { z } from "zod";
-import fs from "fs";
-import path from "path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { generateSystemPrompt } from "../../../lib/prompt";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { convertToOpenAITools } from "./utils";
+import { LangChainAdapter } from "ai";
+import {
+  ListResourcesResultSchema,
+  CallToolResultSchema,
+} from "@modelcontextprotocol/sdk/types";
 
 // Allow streaming responses up to 30 seconds
 export const maxDuration = 30;
@@ -52,17 +58,9 @@ const timeTool = tool({
   },
 });
 
-// 读取MCP配置
-const mcpConfig = JSON.parse(
-  fs.readFileSync(
-    path.join(process.cwd(), "claude_desktop_config.json"),
-    "utf-8"
-  )
-);
-
-const filesystemClient = new Client(
+const client = new Client(
   {
-    name: "filesystem-client",
+    name: "example-client",
     version: "1.0.0",
   },
   {
@@ -70,22 +68,97 @@ const filesystemClient = new Client(
   }
 );
 
-const postgresqlClient = new Client(
+const client2 = new Client(
   {
-    name: "postgresql-client",
+    name: "example-client2",
     version: "1.0.0",
   },
   {
     capabilities: {},
   }
 );
+
+const transport = new StdioClientTransport({
+  command: "npx",
+  args: ["@modelcontextprotocol/server-puppeteer"],
+});
+
+const transport2 = new StdioClientTransport({
+  command: "uvx",
+  args: ["mcp-server-git"],
+});
+
+await client.connect(transport);
+
+const { tools } = await client.listTools();
+
+await client2.connect(transport2);
+const { tools: tools2 } = await client2.listTools();
+
+const toolClientMap: any = {};
+
+for (const tool of tools) {
+  toolClientMap[tool.name] = client;
+}
+
+for (const tool of tools2) {
+  toolClientMap[tool.name] = client2;
+}
+
+function formatToolResponse(responseContent: any): string {
+  console.log("responseContent", responseContent);
+  // 如果响应内容是数组
+  if (Array.isArray(responseContent)) {
+    return responseContent
+      .filter((item) => item?.type === "text")
+      .map((item) => item?.text || "No content")
+      .join("\n");
+  }
+  // 如果不是数组，转换为字符串
+  return JSON.stringify(responseContent);
+}
+
+const allTools2 = [...tools, ...tools2].reduce((acc, cur) => {
+  const key = cur?.name;
+  if (key) {
+    acc[key] = {
+      description: cur?.description,
+      parameters: jsonSchema(cur?.inputSchema),
+      execute: async (params) => {
+        const curClient = toolClientMap[key];
+        console.log("curClient", curClient, params, key);
+        const result = await curClient.request(
+          {
+            method: "tools/call",
+            params: {
+              name: key,
+              arguments: params,
+            },
+          },
+          CallToolResultSchema
+        );
+
+        if (result.isError) {
+          throw new Error(
+            (result?.content?.[0]?.text as string) || "Tool execution failed"
+          );
+        }
+        return formatToolResponse(result.content);
+      },
+    };
+  }
+  return acc;
+}, {} as any);
+
+// const allTools2 = convertToOpenAITools([...tools, ...tools2]);
+
+console.log("allTools2", allTools2);
 
 // 在创建MCP客户端之后，添加以下代码
 const allTools = {
   weather: {
-    name: "weather",
     description: "获取指定位置的天气信息",
-    parameters: {
+    parameters: jsonSchema({
       type: "object",
       properties: {
         location: {
@@ -93,12 +166,15 @@ const allTools = {
           description: "要查询天气的位置",
         },
       },
+    }),
+    execute: async (params) => {
+      console.log("Executing weather tool", params);
+      return `${params.location}天气: 72°F, 晴朗`;
     },
   },
   time: {
-    name: "time",
     description: "获取指定时区的当前时间",
-    parameters: {
+    parameters: jsonSchema({
       type: "object",
       properties: {
         timezone: {
@@ -106,12 +182,15 @@ const allTools = {
           description: "时区，默认为 UTC+8",
         },
       },
+    }),
+    execute: async (params) => {
+      console.log("Executing weather tool", params);
+      return `${params.location}天气: 72°F, 晴朗`;
     },
   },
   filesystem: {
-    name: "filesystem",
     description: "访问本地文件系统",
-    parameters: {
+    parameters: jsonSchema({
       type: "object",
       properties: {
         path: {
@@ -124,12 +203,15 @@ const allTools = {
           description: "操作类型",
         },
       },
+    }),
+    execute: async (params) => {
+      console.log("Executing weather tool", params);
+      return `${params.location}天气: 72°F, 晴朗`;
     },
   },
   postgresql: {
-    name: "postgresql",
     description: "访问PostgreSQL数据库",
-    parameters: {
+    parameters: jsonSchema({
       type: "object",
       properties: {
         query: {
@@ -137,6 +219,10 @@ const allTools = {
           description: "SQL查询语句",
         },
       },
+    }),
+    execute: async (params) => {
+      console.log("Executing weather tool", params);
+      return `${params.location}天气: 72°F, 晴朗`;
     },
   },
 };
@@ -155,15 +241,48 @@ export async function POST(req: Request) {
       ...messages,
     ];
 
+    // const model = new ChatOpenAI({
+    //   model: "gpt-4o-mini",
+    //   temperature: 0,
+    //   configuration: {
+    //     baseURL: process.env.OPENAI_API_BASE,
+    //   },
+    // }).bindTools(allTools2);
+
+    // // const result = await model.invoke(messagesWithSystem);
+    // // console.log("Chat API Response:", result);
+
+    // const stream = await model.stream(messagesWithSystem);
+
+    // const response = createDataStreamResponse({
+    //   status: 200,
+    //   statusText: "OK",
+    //   headers: {
+    //     "Custom-Header": "value",
+    //   },
+    //   async execute(dataStream) {
+    //     for await (const chunk of stream) {
+    //       console.log("Stream chunk:", chunk.content);
+    //       dataStream.writeData(chunk.content);
+    //     }
+    //   },
+    //   onError: (error) => `Custom error: ${error.message}`,
+    // });
+
+    // return response;
+
+    // for await (const chunk of stream) {
+    //   console.log("Stream chunk:", chunk);
+    // }
+
+    // return LangChainAdapter.toDataStreamResponse(stream);
+
+    console.log("allTools2", allTools2);
+
     const result = streamText({
-      model: openai("gpt-4"),
+      model: openai("gpt-4o-mini"),
       messages: messagesWithSystem, // 使用包含系统提示的消息数组
-      tools: {
-        weather: weatherTool,
-        time: timeTool,
-        // filesystem: filesystemTool,
-        // postgresql: postgresqlTool,
-      },
+      tools: allTools2,
       maxSteps: 3,
     });
 

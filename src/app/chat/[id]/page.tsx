@@ -26,6 +26,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
       },
     });
 
+  console.log("Messages:", messages, input);
   useEffect(() => {
     if (!isChatsLoaded) return;
 
