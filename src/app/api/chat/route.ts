@@ -1,5 +1,6 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { streamText, jsonSchema } from "ai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { generateSystemPrompt } from "../../../lib/prompt";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -11,6 +12,11 @@ const openai = createOpenAI({
   apiKey: process.env.OPENAI_API_KEY || "",
   baseURL: process.env.OPENAI_API_BASE,
 });
+
+// const google = createGoogleGenerativeAI({
+//   apiKey: process.env.GOOGLE_API_KEY || "",
+//   baseURL: process.env.GOOGLE_API_BASE,
+// });
 
 const client = new Client(
   {
@@ -98,6 +104,7 @@ const allTools = [...tools, ...tools2].reduce((acc, cur) => {
           return `当前工具调用错误，错误信息：${result?.content?.[0]?.text}`;
         }
         console.log("result", result);
+
         return formatToolResponse(result.content);
       },
     };
@@ -117,11 +124,25 @@ export async function POST(req: Request) {
 
     const result = await streamText({
       model: openai("gpt-4o-mini"),
+      // model: google("gemini-2.0-flash-exp"),
       messages: messagesWithSystem,
       tools: allTools,
       maxSteps: 8,
     });
-    return result.toDataStreamResponse();
+    return result.toDataStreamResponse({
+      getErrorMessage(error) {
+        console.error("Chat API 错误:", error);
+        console.log(
+          "requestBodyValues",
+          JSON.stringify(
+            error?.requestBodyValues.tools?.functionDeclarations,
+            null,
+            2
+          )
+        );
+        return error?.message;
+      },
+    });
   } catch (error: any) {
     console.error("Chat API 错误:", error);
     return new Response(JSON.stringify({ error: error.message }), {
